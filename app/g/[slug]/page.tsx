@@ -21,6 +21,7 @@ export default function GroupView() {
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<"owe" | "owed" | null>(null);
   const [notice, setNotice] = useState("");
+  const [openExpense, setOpenExpense] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -206,20 +207,47 @@ export default function GroupView() {
         {feed.length === 0 && <p className="muted center">No expenses yet. Tap + to add the first one.</p>}
         {feed.map((f) =>
           f.kind === "expense" ? (
-            <div key={f.item.id} className="card expense-row">
-              <Avatar id={f.item.paid_by} name={byId.get(f.item.paid_by)?.display_name ?? "?"} />
-              <div className="expense-row__main">
-                <div className="expense-row__title">{f.item.description}</div>
-                <div className="expense-row__sub">
-                  {nameOf(f.item.paid_by)} paid ·{" "}
-                  {f.item.split_type === "even"
-                    ? `split ${f.item.splits.length} ways`
-                    : f.item.split_type === "shares"
-                      ? "split by shares"
-                      : "custom split"}
+            <div key={f.item.id} className="card">
+              <button
+                className="expense-row expense-row--button"
+                aria-expanded={openExpense === f.item.id}
+                onClick={() => setOpenExpense(openExpense === f.item.id ? null : f.item.id)}
+              >
+                <Avatar id={f.item.paid_by} name={byId.get(f.item.paid_by)?.display_name ?? "?"} />
+                <div className="expense-row__main">
+                  <div className="expense-row__title">{f.item.description}</div>
+                  <div className="expense-row__sub">
+                    {nameOf(f.item.paid_by)} paid ·{" "}
+                    {f.item.split_type === "even"
+                      ? `split ${f.item.splits.length} ways`
+                      : f.item.split_type === "shares"
+                        ? "split by shares"
+                        : "custom split"}
+                  </div>
                 </div>
-              </div>
-              <div className="expense-row__amount">{fmt(f.item.amount_cents)}</div>
+                <div className="expense-row__amount">{fmt(f.item.amount_cents)}</div>
+              </button>
+              {openExpense === f.item.id && (
+                <div className="split-details">
+                  {group.people
+                    .map((p) => f.item.splits.find((s) => s.person_id === p.id))
+                    .filter((s) => s !== undefined)
+                    .map((s) => (
+                      <div key={s.person_id} className="row small">
+                        <span className="grow">
+                          {nameOf(s.person_id)}
+                          {s.share_weight !== null && (
+                            <span className="muted">
+                              {" "}
+                              · {Number(s.share_weight)} share{Number(s.share_weight) === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </span>
+                        <span>{fmt(s.share_cents)}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           ) : (
             <div key={f.item.id} className="card expense-row">

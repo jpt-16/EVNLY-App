@@ -12,9 +12,10 @@ import type { Group, Person, SplitType } from "@/lib/types";
 const CUSTOM_INVALID = "Check the custom amounts.";
 const CUSTOM_SUM = "Custom amounts must add up to the total.";
 const SHARES_INVALID = "Share counts must be positive numbers, like 1 or 0.5.";
+const SHARES_NONE = "Give at least one person a share.";
 // Errors that come from the live custom/shares checks; they clear on their own
 // once the inputs are fixed (the server's wording has no trailing period).
-const SPLIT_ERRORS = new Set([CUSTOM_INVALID, CUSTOM_SUM, CUSTOM_SUM.slice(0, -1), SHARES_INVALID]);
+const SPLIT_ERRORS = new Set([CUSTOM_INVALID, CUSTOM_SUM, CUSTOM_SUM.slice(0, -1), SHARES_INVALID, SHARES_NONE]);
 
 const DEFAULT_WEIGHT = "1";
 
@@ -25,11 +26,28 @@ function checkCustom(people: Person[], custom: Record<string, string>, amountCen
   return { cents, valid, remaining, addsUp: valid && !!amountCents && remaining === 0 };
 }
 
+// A blank or zero share count ("", "0", "0.0") leaves that person out of the split.
+const isLeftOut = (raw: string) => /^\s*0*\.?0*\s*$/.test(raw);
+
 function checkShares(people: Person[], weights: Record<string, string>) {
-  const parsed = people.map((p) => parseShareWeight(weights[p.id] ?? DEFAULT_WEIGHT));
-  const valid = parsed.every((w) => w !== null);
-  const total = valid ? (parsed as number[]).reduce((s, w) => s + w, 0) : 0;
-  return { weights: parsed, valid, total };
+  const rows = people.map((p) => {
+    const raw = weights[p.id] ?? DEFAULT_WEIGHT;
+    return isLeftOut(raw)
+      ? { id: p.id, leftOut: true, weight: null }
+      : { id: p.id, leftOut: false, weight: parseShareWeight(raw) };
+  });
+  const included = rows.filter((r) => !r.leftOut);
+  const anyInvalid = included.some((r) => r.weight === null);
+  const valid = included.length > 0 && !anyInvalid;
+  const total = valid ? included.reduce((s, r) => s + (r.weight as number), 0) : 0;
+  return {
+    rows,
+    anyInvalid,
+    valid,
+    total,
+    participants: included.map((r) => r.id),
+    weights: included.map((r) => r.weight as number),
+  };
 }
 
 export default function AddExpense() {
@@ -103,8 +121,9 @@ export default function AddExpense() {
 
   const shares = checkShares(group.people, weights);
   // Preview only; add_expense computes the real split server-side.
-  const sharePreview =
-    shares.valid && amountCents ? splitByShares(amountCents, shares.weights as number[]) : null;
+  const sharePreviewCents =
+    shares.valid && amountCents ? splitByShares(amountCents, shares.weights) : null;
+  const sharePreview = new Map(sharePreviewCents?.map((c, i) => [shares.participants[i], c]));
 
   function chooseSplitType(type: SplitType) {
     setSplitType(type);
@@ -128,7 +147,9 @@ export default function AddExpense() {
       if (!customValid) return setError(CUSTOM_INVALID);
       if (remaining !== 0) return setError(CUSTOM_SUM);
     }
-    if (splitType === "shares" && !shares.valid) return setError(SHARES_INVALID);
+    if (splitType === "shares" && !shares.valid) {
+      return setError(shares.anyInvalid ? SHARES_INVALID : SHARES_NONE);
+    }
     setSaving(true);
     try {
       await addExpense({
@@ -137,9 +158,14 @@ export default function AddExpense() {
         description,
         amountCents,
         splitType,
-        participants: splitType === "even" ? participants : group!.people.map((p) => p.id),
+        participants:
+          splitType === "even"
+            ? participants
+            : splitType === "shares"
+              ? shares.participants
+              : group!.people.map((p) => p.id),
         shares: splitType === "custom" ? (customCents as number[]) : undefined,
-        shareWeights: splitType === "shares" ? (shares.weights as number[]) : undefined,
+        shareWeights: splitType === "shares" ? shares.weights : undefined,
       });
       router.push(`/g/${slug}`);
     } catch (err) {
@@ -236,13 +262,20 @@ export default function AddExpense() {
         ) : splitType === "shares" ? (
           <div className="stack" style={{ marginTop: 12 }}>
             <p className="muted small" style={{ margin: 0 }}>
-              Shares per person — e.g. 2 for a couple, 0.5 for a kid.
+              Shares per person — e.g. 2 for a couple, 0.5 for a kid. Leave blank or 0 to leave
+              someone out.
             </p>
             {group.people.map((p, i) => (
               <div key={p.id} className="card row">
                 <Avatar id={p.id} name={p.display_name} size={32} />
                 <span className="grow">{nameOf(p.id)}</span>
-                <span className="muted small">{sharePreview ? fmt(sharePreview[i]) : "—"}</span>
+                <span className="muted small">
+                  {shares.rows[i].leftOut
+                    ? "not in split"
+                    : sharePreview.has(p.id)
+                      ? fmt(sharePreview.get(p.id)!)
+                      : "—"}
+                </span>
                 <input
                   className="input share-input"
                   inputMode="decimal"
@@ -253,9 +286,11 @@ export default function AddExpense() {
               </div>
             ))}
             <p className="small center" style={{ color: shares.valid ? "var(--success)" : "var(--muted)" }}>
-              {shares.valid
-                ? `${Number(shares.total.toFixed(2))} shares total ✓`
-                : "Check the share counts above"}
+              {shares.anyInvalid
+                ? "Check the share counts above"
+                : !shares.valid
+                  ? "Give at least one person a share"
+                  : `${Number(shares.total.toFixed(2))} shares total ✓`}
             </p>
           </div>
         ) : (

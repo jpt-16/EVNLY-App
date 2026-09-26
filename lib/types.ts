@@ -13,6 +13,7 @@ export interface Person {
 export interface ExpenseSplit {
   person_id: string;
   share_cents: number;
+  share_weight: number | null; // only for 'shares' splits, e.g. 2 or 0.5
 }
 
 export interface Expense {
