@@ -387,7 +387,8 @@ input {
 
 .segmented {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
   background: var(--chip);
   border-radius: 12px;
   padding: 4px;
@@ -396,7 +397,8 @@ input {
 .segmented button {
   border: none;
   background: transparent;
-  padding: 12px;
+  padding: 12px 6px;
+  white-space: nowrap;
   border-radius: 10px;
   cursor: pointer;
   color: var(--muted);
@@ -425,6 +427,12 @@ input {
 
 .custom-input {
   width: 110px;
+  text-align: right;
+  padding: 10px 12px;
+}
+
+.share-input {
+  width: 72px;
   text-align: right;
   padding: 10px 12px;
 }

@@ -6,8 +6,31 @@ import { Avatar } from "@/components/Avatar";
 import { Header } from "@/components/Header";
 import { addExpense, getGroup } from "@/lib/api";
 import { getMe } from "@/lib/identity";
-import { formatCents, parseToCents, splitEvenly } from "@/lib/money";
-import type { Group, SplitType } from "@/lib/types";
+import { formatCents, parseShareWeight, parseToCents, splitByShares, splitEvenly } from "@/lib/money";
+import type { Group, Person, SplitType } from "@/lib/types";
+
+const CUSTOM_INVALID = "Check the custom amounts.";
+const CUSTOM_SUM = "Custom amounts must add up to the total.";
+const SHARES_INVALID = "Share counts must be positive numbers, like 1 or 0.5.";
+// Errors that come from the live custom/shares checks; they clear on their own
+// once the inputs are fixed (the server's wording has no trailing period).
+const SPLIT_ERRORS = new Set([CUSTOM_INVALID, CUSTOM_SUM, CUSTOM_SUM.slice(0, -1), SHARES_INVALID]);
+
+const DEFAULT_WEIGHT = "1";
+
+function checkCustom(people: Person[], custom: Record<string, string>, amountCents: number | null) {
+  const cents = people.map((p) => (custom[p.id]?.trim() ? parseToCents(custom[p.id]) : 0));
+  const valid = cents.every((c) => c !== null);
+  const remaining = (amountCents ?? 0) - cents.reduce<number>((s, c) => s + (c ?? 0), 0);
+  return { cents, valid, remaining, addsUp: valid && !!amountCents && remaining === 0 };
+}
+
+function checkShares(people: Person[], weights: Record<string, string>) {
+  const parsed = people.map((p) => parseShareWeight(weights[p.id] ?? DEFAULT_WEIGHT));
+  const valid = parsed.every((w) => w !== null);
+  const total = valid ? (parsed as number[]).reduce((s, w) => s + w, 0) : 0;
+  return { weights: parsed, valid, total };
+}
 
 export default function AddExpense() {
   const { slug } = useParams<{ slug: string }>();
@@ -20,6 +43,7 @@ export default function AddExpense() {
   const [splitType, setSplitType] = useState<SplitType>("even");
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const [custom, setCustom] = useState<Record<string, string>>({});
+  const [weights, setWeights] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +64,19 @@ export default function AddExpense() {
       .catch((err) => setError((err as Error).message));
   }, [slug, router]);
 
+  // Clear a custom/shares validation error as soon as the live check passes
+  // again, instead of leaving it up until the next submit.
+  useEffect(() => {
+    if (!group) return;
+    const fixed =
+      splitType === "custom"
+        ? checkCustom(group.people, custom, parseToCents(amount)).addsUp
+        : splitType === "shares"
+          ? checkShares(group.people, weights).valid
+          : false;
+    if (fixed) setError((e) => (SPLIT_ERRORS.has(e) ? "" : e));
+  }, [group, amount, splitType, custom, weights]);
+
   if (!group || !me || !paidBy) {
     return (
       <main className="screen">
@@ -58,10 +95,21 @@ export default function AddExpense() {
   const participants = group.people.filter((p) => included.has(p.id)).map((p) => p.id);
   const evenShares = amountCents ? splitEvenly(amountCents, participants.length) : [];
 
-  const customCents = group.people.map((p) => (custom[p.id]?.trim() ? parseToCents(custom[p.id]) : 0));
-  const customValid = customCents.every((c) => c !== null);
-  const customTotal = customCents.reduce<number>((s, c) => s + (c ?? 0), 0);
-  const remaining = (amountCents ?? 0) - customTotal;
+  const {
+    cents: customCents,
+    valid: customValid,
+    remaining,
+  } = checkCustom(group.people, custom, amountCents);
+
+  const shares = checkShares(group.people, weights);
+  // Preview only; add_expense computes the real split server-side.
+  const sharePreview =
+    shares.valid && amountCents ? splitByShares(amountCents, shares.weights as number[]) : null;
+
+  function chooseSplitType(type: SplitType) {
+    setSplitType(type);
+    setError((e) => (SPLIT_ERRORS.has(e) ? "" : e));
+  }
 
   function toggle(id: string) {
     const next = new Set(included);
@@ -77,9 +125,10 @@ export default function AddExpense() {
     if (!description.trim()) return setError("Add what it's for.");
     if (splitType === "even" && participants.length === 0) return setError("Pick at least one person.");
     if (splitType === "custom") {
-      if (!customValid) return setError("Check the custom amounts.");
-      if (remaining !== 0) return setError("Custom amounts must add up to the total.");
+      if (!customValid) return setError(CUSTOM_INVALID);
+      if (remaining !== 0) return setError(CUSTOM_SUM);
     }
+    if (splitType === "shares" && !shares.valid) return setError(SHARES_INVALID);
     setSaving(true);
     try {
       await addExpense({
@@ -90,6 +139,7 @@ export default function AddExpense() {
         splitType,
         participants: splitType === "even" ? participants : group!.people.map((p) => p.id),
         shares: splitType === "custom" ? (customCents as number[]) : undefined,
+        shareWeights: splitType === "shares" ? (shares.weights as number[]) : undefined,
       });
       router.push(`/g/${slug}`);
     } catch (err) {
@@ -152,11 +202,14 @@ export default function AddExpense() {
 
         <span className="label">Split</span>
         <div className="segmented">
-          <button type="button" aria-pressed={splitType === "even"} onClick={() => setSplitType("even")}>
+          <button type="button" aria-pressed={splitType === "even"} onClick={() => chooseSplitType("even")}>
             Evenly
           </button>
-          <button type="button" aria-pressed={splitType === "custom"} onClick={() => setSplitType("custom")}>
+          <button type="button" aria-pressed={splitType === "custom"} onClick={() => chooseSplitType("custom")}>
             Custom amounts
+          </button>
+          <button type="button" aria-pressed={splitType === "shares"} onClick={() => chooseSplitType("shares")}>
+            Shares
           </button>
         </div>
 
@@ -179,6 +232,31 @@ export default function AddExpense() {
               <span className="grow">{participants.map(nameOf).join(", ") || "Nobody selected"}</span>
               <span className="muted">{evenSummary}</span>
             </div>
+          </div>
+        ) : splitType === "shares" ? (
+          <div className="stack" style={{ marginTop: 12 }}>
+            <p className="muted small" style={{ margin: 0 }}>
+              Shares per person — e.g. 2 for a couple, 0.5 for a kid.
+            </p>
+            {group.people.map((p, i) => (
+              <div key={p.id} className="card row">
+                <Avatar id={p.id} name={p.display_name} size={32} />
+                <span className="grow">{nameOf(p.id)}</span>
+                <span className="muted small">{sharePreview ? fmt(sharePreview[i]) : "—"}</span>
+                <input
+                  className="input share-input"
+                  inputMode="decimal"
+                  value={weights[p.id] ?? DEFAULT_WEIGHT}
+                  onChange={(e) => setWeights({ ...weights, [p.id]: e.target.value })}
+                  aria-label={`${nameOf(p.id)} shares`}
+                />
+              </div>
+            ))}
+            <p className="small center" style={{ color: shares.valid ? "var(--success)" : "var(--muted)" }}>
+              {shares.valid
+                ? `${Number(shares.total.toFixed(2))} shares total ✓`
+                : "Check the share counts above"}
+            </p>
           </div>
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>

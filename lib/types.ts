@@ -1,6 +1,6 @@
 // Shape of the JSON returned by the get_group() Postgres function.
 
-export type SplitType = "even" | "custom";
+export type SplitType = "even" | "custom" | "shares";
 export type SettlementMethod = "manual" | "venmo" | "cashapp" | "other";
 
 export interface Person {

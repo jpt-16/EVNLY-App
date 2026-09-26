@@ -43,7 +43,8 @@ export function addExpense(args: {
   amountCents: number;
   splitType: SplitType;
   participants: string[];
-  shares?: number[]; // custom splits only, parallel to participants
+  shares?: number[]; // custom splits only: cents, parallel to participants
+  shareWeights?: number[]; // shares splits only: weights, parallel to participants
 }) {
   return rpc<string>("add_expense", {
     p_slug: args.slug,
@@ -53,6 +54,7 @@ export function addExpense(args: {
     p_split_type: args.splitType,
     p_participants: args.participants,
     p_shares: args.splitType === "custom" ? args.shares : null,
+    p_share_weights: args.splitType === "shares" ? args.shareWeights : null,
   });
 }
 

@@ -212,7 +212,11 @@ export default function GroupView() {
                 <div className="expense-row__title">{f.item.description}</div>
                 <div className="expense-row__sub">
                   {nameOf(f.item.paid_by)} paid ·{" "}
-                  {f.item.split_type === "even" ? `split ${f.item.splits.length} ways` : "custom split"}
+                  {f.item.split_type === "even"
+                    ? `split ${f.item.splits.length} ways`
+                    : f.item.split_type === "shares"
+                      ? "split by shares"
+                      : "custom split"}
                 </div>
               </div>
               <div className="expense-row__amount">{fmt(f.item.amount_cents)}</div>
