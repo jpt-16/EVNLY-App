@@ -1,10 +1,6 @@
-const PALETTE = [
-  { bg: "#E6ECFB", fg: "#3E6AD9" },
-  { bg: "#FBEBD9", fg: "#D07A2E" },
-  { bg: "#ECE8E0", fg: "#3A3834" },
-  { bg: "#E3F1E6", fg: "#2F7A45" },
-  { bg: "#F4E4EF", fg: "#9A3D7A" },
-];
+// Colors live as CSS custom properties (see .avatar--0 … --4 in globals.css) so
+// each swatch can shift for dark mode without touching this hashing logic.
+const SWATCH_COUNT = 5;
 
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -12,10 +8,10 @@ export function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase();
 }
 
-function colorFor(id: string) {
+function swatchFor(id: string) {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
-  return PALETTE[Math.abs(hash) % PALETTE.length];
+  return Math.abs(hash) % SWATCH_COUNT;
 }
 
 export function Avatar({
@@ -29,11 +25,10 @@ export function Avatar({
   size?: number;
   selected?: boolean;
 }) {
-  const c = colorFor(id);
   return (
     <span
-      className={`avatar${selected ? " avatar--selected" : ""}`}
-      style={{ width: size, height: size, background: c.bg, color: c.fg, fontSize: size * 0.36 }}
+      className={`avatar avatar--${swatchFor(id)}${selected ? " avatar--selected" : ""}`}
+      style={{ width: size, height: size, fontSize: size * 0.36 }}
       aria-hidden
     >
       {initials(name)}

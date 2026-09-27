@@ -2,10 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Plus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { Header } from "@/components/Header";
+import { ErrorMessage } from "@/components/ErrorMessage";
+import { Icon } from "@/components/Icon";
 import { createGroup } from "@/lib/api";
 import { setMe } from "@/lib/identity";
+
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 export default function NewSplit() {
   const router = useRouter();
@@ -83,20 +89,30 @@ export default function NewSplit() {
             <span className="muted small">organizer</span>
           </div>
 
-          {others.map((n, i) => (
-            <div key={n} className="card person-row">
-              <Avatar id={n} name={n} />
-              <span className="person-row__name">{n}</span>
-              <button
-                type="button"
-                className="remove-btn"
-                aria-label={`Remove ${n}`}
-                onClick={() => setOthers(others.filter((_, j) => j !== i))}
+          <AnimatePresence initial={false}>
+            {others.map((n, i) => (
+              <motion.div
+                key={n}
+                className="card person-row"
+                initial={{ opacity: 0, height: 0, marginBottom: -10 }}
+                animate={{ opacity: 1, height: "auto", marginBottom: 0 }}
+                exit={{ opacity: 0, height: 0, marginBottom: -10 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                style={{ overflow: "hidden" }}
               >
-                ×
-              </button>
-            </div>
-          ))}
+                <Avatar id={n} name={n} />
+                <span className="person-row__name">{n}</span>
+                <button
+                  type="button"
+                  className="remove-btn"
+                  aria-label={`Remove ${n}`}
+                  onClick={() => setOthers(others.filter((_, j) => j !== i))}
+                >
+                  <Icon icon={X} size={16} />
+                </button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
 
           <div className="row">
             <input
@@ -113,7 +129,7 @@ export default function NewSplit() {
               }}
             />
             <button type="button" className="icon-btn" style={{ background: "var(--chip)" }} onClick={addDraft} aria-label="Add person">
-              +
+              <Icon icon={Plus} size={18} />
             </button>
           </div>
         </div>
@@ -123,7 +139,7 @@ export default function NewSplit() {
           the invite link.
         </p>
 
-        {error && <p className="error">{error}</p>}
+        {error && <ErrorMessage>{error}</ErrorMessage>}
 
         <div className="grow" />
 

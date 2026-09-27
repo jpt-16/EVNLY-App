@@ -3,14 +3,20 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Check, ChevronRight, Plus, Receipt, Share2, Sparkles } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { Header } from "@/components/Header";
+import { ErrorMessage } from "@/components/ErrorMessage";
+import { Icon } from "@/components/Icon";
 import { addPerson, claimPerson, getGroup, recordSettlement } from "@/lib/api";
 import { getMe, setMe } from "@/lib/identity";
 import { formatCents } from "@/lib/money";
 import type { Expense, Group, Person, Settlement } from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const EASE = [0.16, 1, 0.3, 1] as const;
+const EXPAND_TRANSITION = { duration: 0.2, ease: EASE };
 
 type FeedItem = { kind: "expense"; item: Expense } | { kind: "settlement"; item: Settlement };
 
@@ -44,7 +50,7 @@ export default function GroupView() {
   }, [group]);
 
   if (error) return <Message title="Something went wrong" body={error} />;
-  if (group === undefined) return <Message title="Loading…" />;
+  if (group === undefined) return <GroupSkeleton />;
   if (group === null) return <Message title="Split not found" body="Check the link and try again." />;
 
   const byId = new Map(group.people.map((p) => [p.id, p]));
@@ -109,23 +115,37 @@ export default function GroupView() {
         serif
         action={
           <button className="btn btn--primary btn--sm" onClick={invite}>
+            <Icon icon={Share2} size={15} />
             Invite
           </button>
         }
       />
 
-      <span className="badge">
+      <span className={group.is_archived ? "badge badge--archived" : "badge"}>
         {group.is_archived
           ? "Archived · read-only"
           : `Archives in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless a new expense is added`}
       </span>
 
-      {notice && <p className="muted small center">{notice}</p>}
+      <AnimatePresence>
+        {notice && (
+          <motion.p
+            className="notice"
+            initial={{ opacity: 0, y: -6, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 16 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={EXPAND_TRANSITION}
+          >
+            <Icon icon={Sparkles} size={14} />
+            {notice}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       <div className="balances">
         <div className="card">
           <div className="balance-card__label">You&apos;re owed</div>
-          <div className="balance-card__amount" style={{ color: "var(--primary)" }}>
+          <div className="balance-card__amount" style={{ color: "var(--primary-ink)" }}>
             {fmt(totalOwed)}
           </div>
           <button
@@ -139,7 +159,7 @@ export default function GroupView() {
         </div>
         <div className="card">
           <div className="balance-card__label">You owe</div>
-          <div className="balance-card__amount" style={{ color: "var(--owe)" }}>
+          <div className="balance-card__amount" style={{ color: "var(--owe-ink)" }}>
             {fmt(totalOwe)}
           </div>
           <button
@@ -153,58 +173,83 @@ export default function GroupView() {
         </div>
       </div>
 
-      {panel === "owe" && (
-        <div className="card stack sheet">
-          <strong>Settle up</strong>
-          <p className="muted small" style={{ margin: 0 }}>
-            Pay them however you like, then mark it settled here.
-          </p>
-          {iOwe.map((b) => (
-            <div key={b.to_person} className="row">
-              <Avatar id={b.to_person} name={nameOf(b.to_person)} size={32} />
-              <span className="grow">
-                {nameOf(b.to_person)} · {fmt(b.amount_cents)}
-              </span>
-              <button
-                className="btn btn--owe btn--sm"
-                disabled={group.is_archived}
-                onClick={() => settle(meValid, b.to_person, b.amount_cents)}
-              >
-                Mark settled
-              </button>
+      <AnimatePresence initial={false}>
+        {panel === "owe" && (
+          <motion.div
+            className="sheet"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={EXPAND_TRANSITION}
+          >
+            <div className="card stack">
+              <strong>Settle up</strong>
+              <p className="muted small" style={{ margin: 0 }}>
+                Pay them however you like, then mark it settled here.
+              </p>
+              {iOwe.map((b) => (
+                <div key={b.to_person} className="row">
+                  <Avatar id={b.to_person} name={nameOf(b.to_person)} size={32} />
+                  <span className="grow">
+                    {nameOf(b.to_person)} · {fmt(b.amount_cents)}
+                  </span>
+                  <button
+                    className="btn btn--owe btn--sm"
+                    disabled={group.is_archived}
+                    onClick={() => settle(meValid, b.to_person, b.amount_cents)}
+                  >
+                    Mark settled
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </motion.div>
+        )}
 
-      {panel === "owed" && (
-        <div className="card stack sheet">
-          <strong>Who owes you</strong>
-          {owedToMe.map((b) => (
-            <div key={b.from_person} className="row">
-              <Avatar id={b.from_person} name={nameOf(b.from_person)} size={32} />
-              <span className="grow">
-                {nameOf(b.from_person)} · {fmt(b.amount_cents)}
-              </span>
-              <button
-                className="btn btn--ghost btn--sm"
-                disabled={group.is_archived}
-                onClick={() => settle(b.from_person, meValid, b.amount_cents)}
-              >
-                Got paid
+        {panel === "owed" && (
+          <motion.div
+            className="sheet"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={EXPAND_TRANSITION}
+          >
+            <div className="card stack">
+              <strong>Who owes you</strong>
+              {owedToMe.map((b) => (
+                <div key={b.from_person} className="row">
+                  <Avatar id={b.from_person} name={nameOf(b.from_person)} size={32} />
+                  <span className="grow">
+                    {nameOf(b.from_person)} · {fmt(b.amount_cents)}
+                  </span>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    disabled={group.is_archived}
+                    onClick={() => settle(b.from_person, meValid, b.amount_cents)}
+                  >
+                    Got paid
+                  </button>
+                </div>
+              ))}
+              <button className="btn btn--primary btn--sm" onClick={invite}>
+                Share link as a reminder
               </button>
             </div>
-          ))}
-          <button className="btn btn--primary btn--sm" onClick={invite}>
-            Share link as a reminder
-          </button>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <PeopleLine group={group} onAdded={load} />
 
       <div className="stack" style={{ paddingBottom: 96 }}>
-        {feed.length === 0 && <p className="muted center">No expenses yet. Tap + to add the first one.</p>}
+        {feed.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-state__icon">
+              <Icon icon={Receipt} size={24} />
+            </div>
+            <p style={{ margin: 0 }}>No expenses yet. Tap + to add the first one.</p>
+          </div>
+        )}
         {feed.map((f) =>
           f.kind === "expense" ? (
             <div key={f.item.id} className="card">
@@ -215,7 +260,10 @@ export default function GroupView() {
               >
                 <Avatar id={f.item.paid_by} name={byId.get(f.item.paid_by)?.display_name ?? "?"} />
                 <div className="expense-row__main">
-                  <div className="expense-row__title">{f.item.description}</div>
+                  <div className="expense-row__title">
+                    <Icon icon={ChevronRight} size={14} />
+                    {f.item.description}
+                  </div>
                   <div className="expense-row__sub">
                     {nameOf(f.item.paid_by)} paid ·{" "}
                     {f.item.split_type === "even"
@@ -227,27 +275,36 @@ export default function GroupView() {
                 </div>
                 <div className="expense-row__amount">{fmt(f.item.amount_cents)}</div>
               </button>
-              {openExpense === f.item.id && (
-                <div className="split-details">
-                  {group.people
-                    .map((p) => f.item.splits.find((s) => s.person_id === p.id))
-                    .filter((s) => s !== undefined)
-                    .map((s) => (
-                      <div key={s.person_id} className="row small">
-                        <span className="grow">
-                          {nameOf(s.person_id)}
-                          {s.share_weight !== null && (
-                            <span className="muted">
-                              {" "}
-                              · {Number(s.share_weight)} share{Number(s.share_weight) === 1 ? "" : "s"}
+              <AnimatePresence initial={false}>
+                {openExpense === f.item.id && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={EXPAND_TRANSITION}
+                  >
+                    <div className="split-details">
+                      {group.people
+                        .map((p) => f.item.splits.find((s) => s.person_id === p.id))
+                        .filter((s) => s !== undefined)
+                        .map((s) => (
+                          <div key={s.person_id} className="row small">
+                            <span className="grow">
+                              {nameOf(s.person_id)}
+                              {s.share_weight !== null && (
+                                <span className="muted">
+                                  {" "}
+                                  · {Number(s.share_weight)} share{Number(s.share_weight) === 1 ? "" : "s"}
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
-                        <span>{fmt(s.share_cents)}</span>
-                      </div>
-                    ))}
-                </div>
-              )}
+                            <span>{fmt(s.share_cents)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           ) : (
             <div key={f.item.id} className="card expense-row">
@@ -256,7 +313,10 @@ export default function GroupView() {
                 <div className="expense-row__title">
                   {nameOf(f.item.from_person)} paid {nameOf(f.item.to_person)}
                 </div>
-                <div className="expense-row__sub settled">✓ Settled</div>
+                <div className="expense-row__sub settled">
+                  <Icon icon={Check} size={14} />
+                  Settled
+                </div>
               </div>
               <div className="expense-row__amount strike">{fmt(f.item.amount_cents)}</div>
             </div>
@@ -280,9 +340,31 @@ export default function GroupView() {
 
       {!group.is_archived && (
         <Link href={`/g/${slug}/expense/new`} className="fab" aria-label="Add expense">
-          +
+          <Icon icon={Plus} size={26} strokeWidth={2} />
         </Link>
       )}
+    </main>
+  );
+}
+
+function GroupSkeleton() {
+  return (
+    <main className="screen" aria-busy="true" aria-label="Loading split">
+      <div className="header">
+        <div className="icon-btn skeleton" style={{ border: "none" }} />
+        <div />
+        <div />
+      </div>
+      <div className="skeleton skeleton-badge" />
+      <div className="skeleton-balances">
+        <div className="card skeleton skeleton-balance" />
+        <div className="card skeleton skeleton-balance" />
+      </div>
+      <div className="stack">
+        <div className="card skeleton skeleton-row" />
+        <div className="card skeleton skeleton-row" />
+        <div className="card skeleton skeleton-row" />
+      </div>
     </main>
   );
 }
@@ -319,22 +401,32 @@ function PeopleLine({ group, onAdded }: { group: Group; onAdded: () => void }) {
           </button>
         )}
       </div>
-      {adding && (
-        <form onSubmit={submit} className="row" style={{ marginTop: 8 }}>
-          <input
-            className="input"
-            placeholder="Name"
-            value={name}
-            maxLength={40}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-          />
-          <button className="btn btn--primary btn--sm" type="submit">
-            Add
-          </button>
-        </form>
-      )}
-      {error && <p className="error">{error}</p>}
+      <AnimatePresence initial={false}>
+        {adding && (
+          <motion.form
+            onSubmit={submit}
+            className="row"
+            style={{ marginTop: 8, overflow: "hidden" }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={EXPAND_TRANSITION}
+          >
+            <input
+              className="input"
+              placeholder="Name"
+              value={name}
+              maxLength={40}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+            <button className="btn btn--primary btn--sm" type="submit">
+              Add
+            </button>
+          </motion.form>
+        )}
+      </AnimatePresence>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
     </div>
   );
 }
@@ -381,7 +473,6 @@ function ClaimSpot({ group, onClaimed }: { group: Group; onClaimed: (personId: s
           <button
             key={p.id}
             className="card person-row"
-            style={{ cursor: "pointer", textAlign: "left" }}
             disabled={busy}
             onClick={() => claim(p)}
           >
@@ -411,7 +502,7 @@ function ClaimSpot({ group, onClaimed }: { group: Group; onClaimed: (personId: s
           </div>
         </form>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <ErrorMessage>{error}</ErrorMessage>}
     </main>
   );
 }
@@ -421,7 +512,7 @@ function Message({ title, body }: { title: string; body?: string }) {
     <main className="screen">
       <div className="grow" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div className="logo">E</div>
-        <h1 className="center" style={{ fontSize: 22 }}>
+        <h1 className="center" style={{ fontSize: 22, fontFamily: "var(--font-serif-stack)" }}>
           {title}
         </h1>
         {body && <p className="muted center">{body}</p>}
