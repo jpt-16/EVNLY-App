@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "motion/react";
+import { Link2, Receipt, UserPlus, Wallet } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { Avatar } from "@/components/Avatar";
+import { Icon } from "@/components/Icon";
 import { formatCents } from "@/lib/money";
 
 // Accepts a full invite URL (https://getevnly.com/g/abc...) or a bare slug.
@@ -17,6 +20,29 @@ function extractSlug(input: string): string | null {
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const;
+
+const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
+  {
+    icon: UserPlus,
+    title: "Start a split",
+    body: "Name it — a trip, a dinner, the house — and add everyone by first name. No emails, no phone numbers.",
+  },
+  {
+    icon: Link2,
+    title: "Share the link",
+    body: "Send the invite link anywhere. Friends open it, tap their name, and they're in. Nobody makes an account.",
+  },
+  {
+    icon: Receipt,
+    title: "Add expenses",
+    body: "Log who paid and split it evenly, by exact amounts, or by shares — like 2 for a couple, 0.5 for a kid.",
+  },
+  {
+    icon: Wallet,
+    title: "Settle up",
+    body: "EVNLY keeps a running tally of who owes whom. Pay however you like, then mark it settled.",
+  },
+];
 
 export default function Landing() {
   const router = useRouter();
@@ -92,7 +118,45 @@ export default function Landing() {
             Have a link already? Open it
           </button>
         )}
+        <a href="#how-it-works" className="link-btn small center">
+          How it works ↓
+        </a>
       </motion.div>
+
+      <section id="how-it-works" className="how" aria-labelledby="how-title">
+        <h2 id="how-title" className="how__title serif">
+          How it works
+        </h2>
+        <ol className="how__steps">
+          {STEPS.map((step, i) => (
+            <motion.li
+              key={step.title}
+              className="how__step"
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.4, delay: i * 0.06, ease: EASE }}
+            >
+              <span className="how__icon">
+                <Icon icon={step.icon} size={20} />
+              </span>
+              <div>
+                <h3 className="how__step-title">
+                  <span className="how__num">{i + 1}</span>
+                  {step.title}
+                </h3>
+                <p className="how__body">{step.body}</p>
+              </div>
+            </motion.li>
+          ))}
+        </ol>
+        <p className="how__note muted small center">
+          Splits archive automatically 14 days after the last expense, so nothing lingers.
+        </p>
+        <Link href="/new" className="btn btn--primary">
+          Start a new split
+        </Link>
+      </section>
     </main>
   );
 }
